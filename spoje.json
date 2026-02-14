@@ -1,19 +1,21 @@
 [
   {
-    "id": "R805",
-    "nazev": "Rychl�k 805 Moravan",
+    "id": "Os4139",
+    "nazev": "Os 4139",
     "trasa": [
-      { "stanice": "Praha", "cas": "14:00" },
-      { "stanice": "Kolin", "cas": "14:40" },
-      { "stanice": "Brno", "cas": "16:50" }
+      { "stanice": "Ivančice", "cas": "14:00" },
+      { "stanice": "Milostín", "cas": "14:05" },
+      { "stanice": "Vlárský Průsmyk", "cas": "14:10" }
+      { "stanice": "Brniště", "cas": "14:20" }
     ]
   },
   {
-    "id": "Os2500",
-    "nazev": "Osob�k 2500",
+    "id": "Sp 1705",
+    "nazev": "Sp 1705 Průsmyk",
     "trasa": [
-      { "stanice": "Benesov", "cas": "08:00" },
-      { "stanice": "Praha", "cas": "09:00" }
+      { "stanice": "Ivančice", "cas": "08:00" },
+      { "stanice": "Brniště", "cas": "09:00" }
     ]
   }
+
 ]
