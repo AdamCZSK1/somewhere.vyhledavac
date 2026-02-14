@@ -5,7 +5,7 @@
     "trasa": [
       { "stanice": "Ivancice", "cas": "14:00" },
       { "stanice": "Milostin", "cas": "14:05" },
-      { "stanice": "Vlarsky Prusmyk", "cas": "14:10" }
+      { "stanice": "Vlarsky Prusmyk", "cas": "14:10" },
       { "stanice": "Brniste", "cas": "14:20" }
     ]
   },
@@ -19,4 +19,5 @@
   }
 
 ]
+
 
