@@ -3,19 +3,20 @@
     "id": "Os4139",
     "nazev": "Os 4139",
     "trasa": [
-      { "stanice": "Ivančice", "cas": "14:00" },
-      { "stanice": "Milostín", "cas": "14:05" },
-      { "stanice": "Vlárský Průsmyk", "cas": "14:10" }
-      { "stanice": "Brniště", "cas": "14:20" }
+      { "stanice": "Ivancice", "cas": "14:00" },
+      { "stanice": "Milostin", "cas": "14:05" },
+      { "stanice": "Vlarsky Prusmyk", "cas": "14:10" }
+      { "stanice": "Brniste", "cas": "14:20" }
     ]
   },
   {
-    "id": "Sp 1705",
-    "nazev": "Sp 1705 Průsmyk",
+    "id": "Sp1705",
+    "nazev": "Sp 1705 Prusmyk",
     "trasa": [
-      { "stanice": "Ivančice", "cas": "08:00" },
-      { "stanice": "Brniště", "cas": "09:00" }
+      { "stanice": "Ivancice", "cas": "08:00" },
+      { "stanice": "Brniste", "cas": "09:00" }
     ]
   }
 
 ]
+
