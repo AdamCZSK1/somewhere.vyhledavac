@@ -1,0 +1,19 @@
+[
+  {
+    "id": "R805",
+    "nazev": "Rychlík 805 Moravan",
+    "trasa": [
+      { "stanice": "Praha", "cas": "14:00" },
+      { "stanice": "Kolin", "cas": "14:40" },
+      { "stanice": "Brno", "cas": "16:50" }
+    ]
+  },
+  {
+    "id": "Os2500",
+    "nazev": "Osobák 2500",
+    "trasa": [
+      { "stanice": "Benesov", "cas": "08:00" },
+      { "stanice": "Praha", "cas": "09:00" }
+    ]
+  }
+]

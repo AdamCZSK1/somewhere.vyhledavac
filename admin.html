@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <title>Dispečink Somewhere</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 20px; background: #f4f4f4; }
+        .box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+        .hidden { display: none; }
+        .vlak-row { border-bottom: 1px solid #eee; padding: 10px 0; }
+        h1 { text-align: center; color: #333; }
+    </style>
+</head>
+<body>
+
+    <h1>Dispečerské rozhraní</h1>
+
+    <div id="login-screen" class="box">
+        <h2>Přihlášení do služby</h2>
+        <p>Zadej své služební jméno (např. pepa)</p>
+        <input type="text" id="username" placeholder="Uživatelské jméno">
+        <input type="password" id="password" placeholder="Heslo">
+        <button onclick="login()" style="background-color: #007bff; color: white; border: none; cursor: pointer;">Nastoupit směnu</button>
+    </div>
+
+    <div id="admin-screen" class="box hidden">
+        <h2>Stanice: <span id="station-name" style="color:blue">Načítám...</span></h2>
+        <p>Zde upravuj zpoždění pro vlaky projíždějící tvou stanicí.</p>
+        <div id="train-list"></div>
+        <button onclick="logout()" style="background: #ffcccc; margin-top: 20px; border: 1px solid red; cursor: pointer;">Konec směny (Odhlásit)</button>
+    </div>
+
+    <script type="module">
+        // Importy přímo z Google serverů (aby to fungovalo bez instalace)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getDatabase, ref, get, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        // --- TVOJE NASTAVENÍ (Už jsem ho tam vložil) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBK6Nov1Csfxr2O7iE2WZoKNchmGVFdbHg",
+            authDomain: "somewherevyhledavac.firebaseapp.com",
+            databaseURL: "https://somewherevyhledavac-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "somewherevyhledavac",
+            storageBucket: "somewherevyhledavac.firebasestorage.app",
+            messagingSenderId: "115280119429",
+            appId: "1:115280119429:web:20c50edc0b0bd680e9cbec",
+            measurementId: "G-ZW5WT8D9YW"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+
+        // Finta: Uživatel píše "pepa", my přidáváme "@hra.cz"
+        // DŮLEŽITÉ: Ve Firebase Console musíš uživatele vytvořit jako "pepa@hra.cz"!
+        const DOMAIN = "@hra.cz"; 
+
+        window.login = () => {
+            const user = document.getElementById('username').value + DOMAIN;
+            const pass = document.getElementById('password').value;
+            signInWithEmailAndPassword(auth, user, pass)
+                .catch(err => {
+                    if(err.code === "auth/invalid-credential" || err.code === "auth/user-not-found") {
+                        alert("Chyba: Špatné jméno nebo heslo.");
+                    } else {
+                        alert("Chyba přihlášení: " + err.message);
+                    }
+                });
+        };
+
+        window.logout = () => signOut(auth);
+
+        onAuthStateChanged(auth, async (user) => {
+            const loginSc = document.getElementById('login-screen');
+            const adminSc = document.getElementById('admin-screen');
+
+            if (user) {
+                loginSc.classList.add('hidden');
+                adminSc.classList.remove('hidden');
+                
+                // Zjistíme přidělenou stanici z databáze
+                const stationRef = ref(db, 'sluzby/' + user.uid);
+                const snap = await get(stationRef);
+                const myStation = snap.val();
+
+                if (!myStation) {
+                    document.getElementById('station-name').innerText = "CHYBA: Nemáš přidělenou stanici!";
+                    document.getElementById('train-list').innerHTML = "Kontaktuj Admin Team (chybí záznam v tabulce 'sluzby').";
+                } else {
+                    document.getElementById('station-name').innerText = myStation;
+                    loadTrains(myStation);
+                }
+            } else {
+                loginSc.classList.remove('hidden');
+                adminSc.classList.add('hidden');
+            }
+        });
+
+        async function loadTrains(station) {
+            try {
+                const res = await fetch('spoje.json');
+                const trains = await res.json();
+                const list = document.getElementById('train-list');
+                list.innerHTML = "";
+
+                trains.forEach(async t => {
+                    // Kontrola, zda vlak jede přes mou stanici
+                    const stop = t.trasa.find(s => s.stanice === station);
+                    if (stop) {
+                        // Načtení aktuálního zpoždění z Firebase
+                        const delayRef = ref(db, `zpozdeni/${station}/${t.id}`);
+                        const delaySnap = await get(delayRef);
+                        const delay = delaySnap.val() || 0;
+
+                        list.innerHTML += `
+                            <div class="vlak-row">
+                                <strong>${t.nazev}</strong> (Pravidelný odjezd: ${stop.cas})<br>
+                                Zpoždění: <input type="number" id="d-${t.id}" value="${delay}" style="width:60px; padding:5px;"> min
+                                <button onclick="saveDelay('${station}', '${t.id}')" style="width:auto; padding: 5px 15px; margin-left: 10px;">Uložit</button>
+                            </div>
+                        `;
+                    }
+                });
+            } catch (e) {
+                alert("Chyba při načítání spoje.json! Zkontroluj, jestli je soubor na GitHubu.");
+            }
+        }
+
+        window.saveDelay = (station, trainId) => {
+            const val = document.getElementById(`d-${trainId}`).value;
+            set(ref(db, `zpozdeni/${station}/${trainId}`), parseInt(val))
+                .then(() => alert("✅ Zpoždění uloženo!"))
+                .catch((e) => alert("Chyba ukládání: " + e));
+        };
+    </script>
+</body>
+</html>
