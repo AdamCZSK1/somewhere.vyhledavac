@@ -2,13 +2,26 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <title>Dispečink Somewhere</title>
+    <title>Dispečink - Admin</title>
     <style>
         body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 20px; background: #f4f4f4; }
         .box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+        input, button { padding: 10px; margin: 5px 0; font-size: 14px; }
         .hidden { display: none; }
-        .vlak-row { border-bottom: 1px solid #eee; padding: 10px 0; }
+        .vlak-row { 
+            border-bottom: 1px solid #eee; 
+            padding: 15px 0; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 10px;
+        }
+        .controls { display: flex; gap: 10px; align-items: center; }
+        
+        /* Barvy tlačítek */
+        .btn-login { background-color: #007bff; color: white; border: none; cursor: pointer; }
+        .btn-save { background-color: #28a745; color: white; border: none; cursor: pointer; flex: 1; }
+        .btn-gone { background-color: #dc3545; color: white; border: none; cursor: pointer; flex: 1; }
+        
         h1 { text-align: center; color: #333; }
     </style>
 </head>
@@ -18,26 +31,25 @@
 
     <div id="login-screen" class="box">
         <h2>Přihlášení do služby</h2>
-        <p>Zadej své služební jméno (např. pepa)</p>
+        <p>Zadej uživatelské jméno (např. <b>pepa</b>)</p>
         <input type="text" id="username" placeholder="Uživatelské jméno">
         <input type="password" id="password" placeholder="Heslo">
-        <button onclick="login()" style="background-color: #007bff; color: white; border: none; cursor: pointer;">Nastoupit směnu</button>
+        <button onclick="login()" class="btn-login">Nastoupit směnu</button>
     </div>
 
     <div id="admin-screen" class="box hidden">
         <h2>Stanice: <span id="station-name" style="color:blue">Načítám...</span></h2>
-        <p>Zde upravuj zpoždění pro vlaky projíždějící tvou stanicí.</p>
+        <p><i>Pokud klikneš na "Odjel", vlak zmizí z vyhledávání.</i></p>
         <div id="train-list"></div>
-        <button onclick="logout()" style="background: #ffcccc; margin-top: 20px; border: 1px solid red; cursor: pointer;">Konec směny (Odhlásit)</button>
+        <button onclick="logout()" style="background: #fff; border: 1px solid #ccc; color: #333; margin-top: 20px;">Odhlásit se</button>
     </div>
 
     <script type="module">
-        // Importy přímo z Google serverů (aby to fungovalo bez instalace)
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { getDatabase, ref, get, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-        // --- TVOJE NASTAVENÍ (Už jsem ho tam vložil) ---
+        // --- ZDE VLOŽ SVŮJ CONFIG Z FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyBK6Nov1Csfxr2O7iE2WZoKNchmGVFdbHg",
             authDomain: "somewherevyhledavac.firebaseapp.com",
@@ -48,26 +60,17 @@
             appId: "1:115280119429:web:20c50edc0b0bd680e9cbec",
             measurementId: "G-ZW5WT8D9YW"
         };
+        // ---------------------------------------
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getDatabase(app);
-
-        // Finta: Uživatel píše "pepa", my přidáváme "@hra.cz"
-        // DŮLEŽITÉ: Ve Firebase Console musíš uživatele vytvořit jako "pepa@hra.cz"!
         const DOMAIN = "@hra.cz"; 
 
         window.login = () => {
             const user = document.getElementById('username').value + DOMAIN;
             const pass = document.getElementById('password').value;
-            signInWithEmailAndPassword(auth, user, pass)
-                .catch(err => {
-                    if(err.code === "auth/invalid-credential" || err.code === "auth/user-not-found") {
-                        alert("Chyba: Špatné jméno nebo heslo.");
-                    } else {
-                        alert("Chyba přihlášení: " + err.message);
-                    }
-                });
+            signInWithEmailAndPassword(auth, user, pass).catch(err => alert("Chyba: " + err.message));
         };
 
         window.logout = () => signOut(auth);
@@ -80,14 +83,11 @@
                 loginSc.classList.add('hidden');
                 adminSc.classList.remove('hidden');
                 
-                // Zjistíme přidělenou stanici z databáze
-                const stationRef = ref(db, 'sluzby/' + user.uid);
-                const snap = await get(stationRef);
+                const snap = await get(ref(db, 'sluzby/' + user.uid));
                 const myStation = snap.val();
 
                 if (!myStation) {
                     document.getElementById('station-name').innerText = "CHYBA: Nemáš přidělenou stanici!";
-                    document.getElementById('train-list').innerHTML = "Kontaktuj Admin Team (chybí záznam v tabulce 'sluzby').";
                 } else {
                     document.getElementById('station-name').innerText = myStation;
                     loadTrains(myStation);
@@ -99,40 +99,60 @@
         });
 
         async function loadTrains(station) {
-            try {
-                const res = await fetch('spoje.json');
-                const trains = await res.json();
-                const list = document.getElementById('train-list');
-                list.innerHTML = "";
+            const res = await fetch('spoje.json');
+            const trains = await res.json();
+            const list = document.getElementById('train-list');
+            list.innerHTML = "";
 
-                trains.forEach(async t => {
-                    // Kontrola, zda vlak jede přes mou stanici
-                    const stop = t.trasa.find(s => s.stanice === station);
-                    if (stop) {
-                        // Načtení aktuálního zpoždění z Firebase
-                        const delayRef = ref(db, `zpozdeni/${station}/${t.id}`);
-                        const delaySnap = await get(delayRef);
-                        const delay = delaySnap.val() || 0;
-
-                        list.innerHTML += `
-                            <div class="vlak-row">
-                                <strong>${t.nazev}</strong> (Pravidelný odjezd: ${stop.cas})<br>
-                                Zpoždění: <input type="number" id="d-${t.id}" value="${delay}" style="width:60px; padding:5px;"> min
-                                <button onclick="saveDelay('${station}', '${t.id}')" style="width:auto; padding: 5px 15px; margin-left: 10px;">Uložit</button>
-                            </div>
-                        `;
+            trains.forEach(async t => {
+                const stop = t.trasa.find(s => s.stanice === station);
+                if (stop) {
+                    // 1. Zjistit, jestli vlak už neodjel
+                    const odjezdRef = ref(db, `odjezdy/${station}/${t.id}`);
+                    const odjezdSnap = await get(odjezdRef);
+                    if (odjezdSnap.exists() && odjezdSnap.val() === true) {
+                        return; // Vlak už odjel, nezobrazujeme ho
                     }
-                });
-            } catch (e) {
-                alert("Chyba při načítání spoje.json! Zkontroluj, jestli je soubor na GitHubu.");
-            }
+
+                    // 2. Zjistit zpoždění
+                    const delayRef = ref(db, `zpozdeni/${station}/${t.id}`);
+                    const delaySnap = await get(delayRef);
+                    const delay = delaySnap.val() || 0;
+
+                    // 3. Vykreslit řádek
+                    const div = document.createElement('div');
+                    div.className = 'vlak-row';
+                    div.id = `row-${t.id}`; // ID pro snadné smazání
+                    
+                    div.innerHTML = `
+                        <div><strong>${t.nazev}</strong> (Odjezd: ${stop.cas})</div>
+                        <div class="controls">
+                            Zpoždění: <input type="number" id="d-${t.id}" value="${delay}" style="width:50px; padding: 8px;"> min
+                            <button class="btn-save" onclick="saveDelay('${station}', '${t.id}')">Uložit</button>
+                            <button class="btn-gone" onclick="vlakOdjel('${station}', '${t.id}')">Odjel</button>
+                        </div>
+                    `;
+                    list.appendChild(div);
+                }
+            });
         }
 
         window.saveDelay = (station, trainId) => {
             const val = document.getElementById(`d-${trainId}`).value;
             set(ref(db, `zpozdeni/${station}/${trainId}`), parseInt(val))
-                .then(() => alert("✅ Zpoždění uloženo!"))
-                .catch((e) => alert("Chyba ukládání: " + e));
+                .then(() => alert("✅ Zpoždění uloženo!"));
+        };
+
+        window.vlakOdjel = (station, trainId) => {
+            if(!confirm("Opravdu vlak odjel? Zmizí z přehledu.")) return;
+
+            // Zápis do databáze 'odjezdy' -> true
+            set(ref(db, `odjezdy/${station}/${trainId}`), true)
+                .then(() => {
+                    // Okamžitě schováme řádek z obrazovky
+                    const radek = document.getElementById(`row-${trainId}`);
+                    if(radek) radek.style.display = 'none';
+                });
         };
     </script>
 </body>
