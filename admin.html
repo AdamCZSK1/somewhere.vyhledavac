@@ -2,47 +2,74 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <title>Dispečink Somewhere</title>
+    <title>Centrální Dispečink</title>
     <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 20px; background: #f4f4f4; }
-        .box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .vlak-row { border-bottom: 1px solid #eee; padding: 15px 0; display: flex; flex-direction: column; gap: 5px; }
-        .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-        .incoming-delay { font-size: 0.85em; color: #d35400; font-weight: bold; margin-left: 5px; }
-        input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        button { cursor: pointer; padding: 8px 15px; border: none; color: white; border-radius: 4px; font-weight: bold; }
-        .btn-login { background-color: #007bff; width: 100%; margin-top: 10px; }
-        .btn-save { background: #27ae60; }
-        .btn-gone { background: #c0392b; }
+        body { font-family: 'Segoe UI', sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #ecf0f1; }
+        .box { background: white; padding: 25px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         .hidden { display: none; }
-        h1 { text-align: center; color: #333; }
+        h1, h2 { color: #2c3e50; margin-top: 0; }
+        
+        input, select, button { padding: 10px; margin: 5px 0; border-radius: 4px; border: 1px solid #ccc; width: 100%; box-sizing: border-box; }
+        button { cursor: pointer; border: none; font-weight: bold; color: white; transition: 0.2s; }
+        
+        .btn-login { background-color: #3498db; }
+        .btn-save { background-color: #27ae60; width: auto; }
+        .btn-gone { background-color: #c0392b; width: auto; }
+        .btn-logout { background-color: #95a5a6; margin-top: 20px; }
+        
+        .vlak-row { border-bottom: 1px solid #eee; padding: 10px 0; display: flex; justify-content: space-between; align-items: center; }
+        .super-panel { border: 2px solid #f39c12; background: #fffdf6; }
     </style>
 </head>
 <body>
 
-    <h1>Dispečerské rozhraní</h1>
+    <h1>🚆 Centrální Dispečink</h1>
 
     <div id="login-screen" class="box">
         <h2>Přihlášení</h2>
-        <p>Zadej služební jméno (např. <b>pepa</b>)</p>
-        <input type="text" id="username" placeholder="Uživatelské jméno" style="width: 100%; box-sizing: border-box; margin-bottom: 10px;">
-        <input type="password" id="password" placeholder="Heslo" style="width: 100%; box-sizing: border-box;">
-        <button onclick="login()" class="btn-login">Nastoupit směnu</button>
+        <input type="text" id="username" placeholder="Uživatelské jméno (např. pepa)">
+        <input type="password" id="password" placeholder="Heslo">
+        <button onclick="login()" class="btn-login">Přihlásit se</button>
+        <p style="text-align:center; margin-top:15px;"><a href="index.html">Zpět na vyhledávač</a></p>
     </div>
 
-    <div id="admin-screen" class="box hidden">
-        <h2>Stanice: <span id="station-name" style="color:blue">Načítám...</span></h2>
-        <div id="train-list"></div>
-        <button onclick="logout()" style="background:#7f8c8d; margin-top:20px; width: 100%;">Konec směny (Odhlásit)</button>
+    <div id="superadmin-screen" class="box super-panel hidden">
+        <h2>⚡ SuperAdmin Panel</h2>
+        
+        <h3>👥 Správa služeb</h3>
+        <div style="display:flex; gap:10px;">
+            <input type="text" id="admin-user-name" placeholder="Jméno (např. pepa)">
+            <input type="text" id="admin-station-name" placeholder="Stanice (např. Praha)">
+        </div>
+        <button onclick="priraditSluzbu()" style="background:#8e44ad;">Přiřadit službu</button>
+        <div id="users-list" style="margin-top:10px; font-size:0.9em; color:#666;"></div>
+
+        <hr style="margin: 20px 0;">
+
+        <h3>🕹️ Ovládání provozu</h3>
+        <select id="station-select" onchange="loadTrainsForSuperAdmin()">
+            <option value="">-- Vyber stanici --</option>
+        </select>
+        <div id="super-trains-list"></div>
+
+        <h3>🗑️ Koš (Smazané vlaky)</h3>
+        <div id="deleted-trains-list"></div>
+        
+        <button onclick="logout()" class="btn-logout">Odhlásit se</button>
+    </div>
+
+    <div id="normal-screen" class="box hidden">
+        <h2>Stanice: <span id="my-station" style="color:#2980b9">...</span></h2>
+        <div id="my-trains-list"></div>
+        <button onclick="logout()" class="btn-logout">Konec směny</button>
     </div>
 
     <script type="module">
-        // Importy přímo z webu (aby to fungovalo bez instalace)
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getDatabase, ref, get, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, get, set, remove, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-        // --- TVOJE KONFIGURACE ---
+        // --- ZDE VLOŽ SVŮJ CONFIG ---
         const firebaseConfig = {
             apiKey: "AIzaSyBK6Nov1Csfxr2O7iE2WZoKNchmGVFdbHg",
             authDomain: "somewherevyhledavac.firebaseapp.com",
@@ -57,92 +84,139 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getDatabase(app);
-
-        // Finta: Uživatel píše "pepa", my přidáváme "@hra.cz"
         const DOMAIN = "@hra.cz"; 
+        let allTrainsData = [];
 
         window.login = () => {
             const user = document.getElementById('username').value + DOMAIN;
             const pass = document.getElementById('password').value;
-            signInWithEmailAndPassword(auth, user, pass)
-                .catch(e => alert("Chyba přihlášení: " + e.message));
+            signInWithEmailAndPassword(auth, user, pass).catch(e => alert(e.message));
         };
 
         window.logout = () => signOut(auth);
 
         onAuthStateChanged(auth, async (user) => {
             const loginSc = document.getElementById('login-screen');
-            const adminSc = document.getElementById('admin-screen');
+            const superSc = document.getElementById('superadmin-screen');
+            const normalSc = document.getElementById('normal-screen');
+
+            loginSc.classList.add('hidden');
+            superSc.classList.add('hidden');
+            normalSc.classList.add('hidden');
 
             if (user) {
-                loginSc.classList.add('hidden');
-                adminSc.classList.remove('hidden');
-                
-                // Zjistit stanici
-                const snap = await get(ref(db, 'sluzby/' + user.uid));
-                const st = snap.val();
-                
-                if(st) {
-                    document.getElementById('station-name').innerText = st;
-                    loadTrains(st);
+                // Načtení dat vlaků
+                const cas = new Date().getTime();
+                const res = await fetch('spoje.json?v=' + cas);
+                allTrainsData = await res.json();
+
+                // 1. KONTROLA: Je to SuperAdmin? (Ptáme se databáze)
+                const adminRef = ref(db, 'admins/' + user.uid);
+                const adminSnap = await get(adminRef);
+
+                if (adminSnap.exists() && adminSnap.val() === true) {
+                    // JE TO ADMIN
+                    superSc.classList.remove('hidden');
+                    initSuperAdmin();
                 } else {
-                    document.getElementById('station-name').innerText = "CHYBA: Nemáš přidělenou stanici!";
+                    // JE TO BĚŽNÝ UŽIVATEL
+                    normalSc.classList.remove('hidden');
+                    initNormalAdmin(user);
                 }
             } else {
                 loginSc.classList.remove('hidden');
-                adminSc.classList.add('hidden');
             }
         });
 
-        // Zjistí, jestli si vlak veze zpoždění z předchozích stanic
-        async function getIncomingDelay(vlak, mojeStanice) {
-            let zpozdeni = 0;
-            for (const bod of vlak.trasa) {
-                if (bod.stanice === mojeStanice) break; // Jsme u nás, končíme hledání
-                
-                const snap = await get(ref(db, `zpozdeni/${bod.stanice}/${vlak.id}`));
-                if (snap.exists()) zpozdeni = snap.val(); // Přepíšeme novějším údajem
+        // --- LOGIKA BĚŽNÝ VÝPRAVČÍ ---
+        async function initNormalAdmin(user) {
+            const username = user.email.split('@')[0].toLowerCase();
+            // Hledáme v tabulce služeb podle jména
+            const snap = await get(ref(db, 'sluzby_names/' + username));
+            const station = snap.val();
+            
+            if (!station) {
+                document.getElementById('my-station').innerText = "Nemáš přidělenou stanici!";
+                return;
             }
-            return zpozdeni;
+            document.getElementById('my-station').innerText = station;
+            renderTrains(station, 'my-trains-list');
         }
 
-        async function loadTrains(station) {
-            // Cache busting (?v=...) aby se načetly nové spoje
-            const cas = new Date().getTime();
-            const res = await fetch('spoje.json?v=' + cas);
-            const trains = await res.json();
-            const list = document.getElementById('train-list');
+        // --- LOGIKA SUPERADMIN ---
+        function initSuperAdmin() {
+            // Select stanic
+            const stations = new Set();
+            allTrainsData.forEach(t => t.trasa.forEach(s => stations.add(s.stanice)));
+            const sel = document.getElementById('station-select');
+            sel.innerHTML = '<option value="">-- Vyber stanici --</option>';
+            stations.forEach(s => sel.innerHTML += `<option value="${s}">${s}</option>`);
+
+            loadUsersList();
+            watchDeleted();
+        }
+
+        window.priraditSluzbu = async () => {
+            const name = document.getElementById('admin-user-name').value.trim().toLowerCase();
+            const station = document.getElementById('admin-station-name').value.trim();
+            if(!name || !station) { alert("Chyba: Vyplň jméno i stanici."); return; }
+
+            await set(ref(db, 'sluzby_names/' + name), station);
+            alert(`OK: ${name} má nyní stanici ${station}`);
+            loadUsersList();
+        };
+
+        function loadUsersList() {
+            onValue(ref(db, 'sluzby_names'), (snap) => {
+                const list = document.getElementById('users-list');
+                list.innerHTML = "<strong>Aktuální služby:</strong><br>";
+                if(snap.exists()) {
+                    const data = snap.val();
+                    Object.keys(data).forEach(k => list.innerHTML += `${k} -> ${data[k]}<br>`);
+                }
+            });
+        }
+
+        // --- SPOLEČNÉ FUNKCE (Vykreslení) ---
+        window.loadTrainsForSuperAdmin = () => {
+            const st = document.getElementById('station-select').value;
+            if(st) renderTrains(st, 'super-trains-list');
+        };
+
+        async function renderTrains(station, elementId) {
+            const list = document.getElementById(elementId);
             list.innerHTML = "";
 
-            for(const t of trains) {
+            for(const t of allTrainsData) {
                 const stop = t.trasa.find(s => s.stanice === station);
-                if (stop) {
-                    // 1. Zjistit jestli už neodjel
-                    const odjelSnap = await get(ref(db, `odjezdy/${station}/${t.id}`));
-                    if (odjelSnap.exists() && odjelSnap.val() === true) continue;
+                if(stop) {
+                    const odjel = (await get(ref(db, `odjezdy/${station}/${t.id}`))).val();
+                    if(odjel) continue;
 
-                    // 2. Zjistit zpoždění (buď zadané u nás, nebo přivezené)
-                    let delay = (await get(ref(db, `zpozdeni/${station}/${t.id}`))).val();
-                    let incomingInfo = "";
-
-                    // Pokud u nás ještě nikdo nic nezadal, podíváme se, co si veze
-                    if (delay === null || delay === undefined) {
-                        const incoming = await getIncomingDelay(t, station);
-                        delay = incoming; 
-                        if(incoming > 0) {
-                            incomingInfo = `<span class="incoming-delay">(Veze si ${incoming} min z minula)</span>`;
+                    let delay = (await get(ref(db, `zpozdeni/${station}/${t.id}`))).val() || 0;
+                    
+                    // Příchozí zpoždění
+                    let incoming = 0;
+                    if(delay === 0) {
+                        for(const b of t.trasa) {
+                            if(b.stanice === station) break;
+                            const d = (await get(ref(db, `zpozdeni/${b.stanice}/${t.id}`))).val();
+                            if(d) incoming = d;
                         }
+                        delay = incoming;
                     }
 
                     const div = document.createElement('div');
                     div.className = 'vlak-row';
-                    div.id = `row-${t.id}`;
                     div.innerHTML = `
-                        <div><strong>${t.nazev}</strong> (Odjezd: ${stop.cas}) ${incomingInfo}</div>
-                        <div class="controls">
-                            Zpoždění: <input type="number" id="d-${t.id}" value="${delay}" style="width:60px"> min
-                            <button class="btn-save" onclick="saveDelay('${station}', '${t.id}')">Uložit</button>
-                            <button class="btn-gone" onclick="vlakOdjel('${station}', '${t.id}')">Odjel</button>
+                        <div>
+                            <strong>${t.nazev}</strong> (${stop.cas})
+                            ${incoming > 0 ? `<span style='color:orange; font-size:0.8em;'>(veze ${incoming})</span>` : ''}
+                        </div>
+                        <div style="display:flex; gap:5px;">
+                            <input type="number" id="d-${elementId}-${t.id}" value="${delay}" style="width:50px">
+                            <button class="btn-save" onclick="saveD('${station}','${t.id}','d-${elementId}-${t.id}')">💾</button>
+                            <button class="btn-gone" onclick="gone('${station}','${t.id}', '${elementId}')">Odjel</button>
                         </div>
                     `;
                     list.appendChild(div);
@@ -150,21 +224,44 @@
             }
         }
 
-        window.saveDelay = (station, trainId) => {
-            const val = document.getElementById(`d-${trainId}`).value;
-            set(ref(db, `zpozdeni/${station}/${trainId}`), parseInt(val))
-                .then(() => alert("✅ Uloženo!"));
+        window.saveD = (st, id, inputId) => {
+            const val = document.getElementById(inputId).value;
+            set(ref(db, `zpozdeni/${st}/${id}`), parseInt(val));
         };
 
-        window.vlakOdjel = (station, trainId) => {
-            if(confirm("Opravdu vlak odjel? Zmizí z přehledu.")) {
-                set(ref(db, `odjezdy/${station}/${trainId}`), true)
+        window.gone = (st, id, elId) => {
+            if(confirm("Vlak odjel?")) {
+                set(ref(db, `odjezdy/${st}/${id}`), true)
                     .then(() => {
-                        const row = document.getElementById(`row-${trainId}`);
-                        if(row) row.style.display = 'none';
+                        if(elId === 'super-trains-list') window.loadTrainsForSuperAdmin();
+                        else { 
+                           const u = auth.currentUser;
+                           if(u) initNormalAdmin(u);
+                        }
                     });
             }
         };
+
+        function watchDeleted() {
+             onValue(ref(db, 'odjezdy'), (snap) => {
+                const div = document.getElementById('deleted-trains-list');
+                div.innerHTML = "";
+                if(snap.exists()) {
+                    const data = snap.val();
+                    Object.keys(data).forEach(st => {
+                        Object.keys(data[st]).forEach(id => {
+                           div.innerHTML += `
+                            <div style="background:#ffdada; border:1px solid red; padding:5px; margin:5px 0; display:flex; justify-content:space-between;">
+                                <span>${id} (${st})</span>
+                                <button onclick="restore('${st}','${id}')">Obnovit</button>
+                            </div>`; 
+                        });
+                    });
+                }
+             });
+        }
+        window.restore = (st, id) => remove(ref(db, `odjezdy/${st}/${id}`));
+
     </script>
 </body>
 </html>
