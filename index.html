@@ -1,55 +1,127 @@
 <!DOCTYPE html>
 <html lang="cs">
 <head>
-    </head>
+    <meta charset="UTF-8">
+    <title>Vyhledávač spojení</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #fafafa; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .login-btn { text-decoration: none; color: #fff; background-color: #34495e; padding: 8px 15px; border-radius: 4px; font-size: 0.9em; }
+        .login-btn:hover { background-color: #2c3e50; }
+        
+        .search-box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); display: flex; gap: 10px; flex-wrap: wrap; }
+        input { padding: 12px; flex: 1; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 12px 20px; background-color: #27ae60; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        .result { background: white; padding: 15px; margin: 15px 0; border-left: 5px solid #27ae60; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .delay { color: red; font-weight: bold; }
+        .on-time { color: green; font-size: 0.9em; }
+        .info-bubble { font-size: 0.8em; color: #666; font-style: italic; margin-top: 5px; }
+    </style>
+</head>
 <body>
+    <div class="header">
+        <h1>🚅 Jízdní řády</h1>
+        <a href="admin.html" class="login-btn">🔒 Přihlášení pro zaměstnance</a>
+    </div>
+    
+    <div class="search-box">
+        <input type="text" id="from" value="Praha" placeholder="Odkud">
+        <input type="text" id="to" value="Brno" placeholder="Kam">
+        <button onclick="search()">Vyhledat spojení</button>
+    </div>
+    
+    <div id="results"></div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-        // --- CONFIG ---
-        const firebaseConfig = { ... }; // DOPLŇ
+        // --- TVOJE CONFIGURACE (VLOŽENO) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBK6Nov1Csfxr2O7iE2WZoKNchmGVFdbHg",
+            authDomain: "somewherevyhledavac.firebaseapp.com",
+            databaseURL: "https://somewherevyhledavac-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "somewherevyhledavac",
+            storageBucket: "somewherevyhledavac.firebasestorage.app",
+            messagingSenderId: "115280119429",
+            appId: "1:115280119429:web:20c50edc0b0bd680e9cbec",
+            measurementId: "G-ZW5WT8D9YW"
+        };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+
+        // Funkce pro chytré zpoždění
+        async function zjistiZpozdeniVlaku(vlak, staniceOdkud) {
+            let aktualniZpozdeni = 0;
+            let posledniHlasenaStanice = "";
+            for (const bod of vlak.trasa) {
+                const snap = await get(ref(db, `zpozdeni/${bod.stanice}/${vlak.id}`));
+                if (snap.exists()) {
+                    aktualniZpozdeni = snap.val();
+                    posledniHlasenaStanice = bod.stanice;
+                }
+                if (bod.stanice === staniceOdkud) break;
+            }
+            return { minuty: aktualniZpozdeni, zdroj: posledniHlasenaStanice };
+        }
 
         window.search = async () => {
             const from = document.getElementById('from').value.trim();
             const to = document.getElementById('to').value.trim();
             const div = document.getElementById('results');
+            
             div.innerHTML = "Hledám v databázi...";
 
             try {
-                // ZMĚNA: Čteme z databáze 'spoje'
+                // 1. Stahujeme vlaky z databáze 'spoje' (už ne ze souboru)
                 const snapshot = await get(ref(db, 'spoje'));
                 
                 if (!snapshot.exists()) {
-                    div.innerHTML = "Žádná data v jízdním řádu.";
+                    div.innerHTML = "Jízdní řád je prázdný.";
                     return;
                 }
 
-                const trains = Object.values(snapshot.val()); // Převedeme na pole
+                const trains = Object.values(snapshot.val());
                 div.innerHTML = "";
                 let foundAny = false;
 
                 for (const t of trains) {
-                    // ... ZBYTEK LOGIKY JE STEJNÝ (Hledání indexA, indexB, výpočet zpoždění...) ...
-                    // Jen nezapomeň, že teď 't' je objekt z databáze
-                    
                     const idxA = t.trasa.findIndex(s => s.stanice === from);
                     const idxB = t.trasa.findIndex(s => s.stanice === to);
-                    
+
                     if (idxA !== -1 && idxB !== -1 && idxA < idxB) {
-                         // Zde vlož logiku pro výpis (zkopíruj z minulého index.html)
-                         // Nezapomeň kontrolovat 'odjezdy' a 'zpozdeni' z DB
-                         
-                         foundAny = true;
-                         div.innerHTML += `<div class="result"><h3>${t.nazev}</h3>...</div>`;
+                        // Kontrola odjezdu
+                        const departSnap = await get(ref(db, `odjezdy/${from}/${t.id}`));
+                        if (departSnap.exists() && departSnap.val() === true) continue;
+
+                        const infoZpozdeni = await zjistiZpozdeniVlaku(t, from);
+                        const delay = infoZpozdeni.minuty;
+                        foundAny = true;
+                        
+                        let delayHtml = '<span class="on-time">Jede včas</span>';
+                        let style = "";
+                        let sourceHtml = "";
+
+                        if (delay > 0) {
+                            delayHtml = `<span class="delay">(+${delay} min)</span>`;
+                            style = "border-left-color: red;";
+                            if (infoZpozdeni.zdroj && infoZpozdeni.zdroj !== from) {
+                                sourceHtml = `<div class="info-bubble">Info: Zpoždění si veze ze stanice ${infoZpozdeni.zdroj}</div>`;
+                            }
+                        }
+
+                        div.innerHTML += `
+                            <div class="result" style="${style}">
+                                <h3>${t.nazev}</h3>
+                                <p>Odjezd z <strong>${from}</strong>: ${t.trasa[idxA].cas} ${delayHtml}<br>
+                                Příjezd do <strong>${to}</strong>: ${t.trasa[idxB].cas}</p>
+                                ${sourceHtml}
+                            </div>
+                        `;
                     }
                 }
-                
-                if(!foundAny) div.innerHTML = "Nic nenalezeno.";
-
+                if (!foundAny) div.innerHTML = "<p>Žádné spojení nenalezeno.</p>";
             } catch (e) {
                 console.error(e);
                 div.innerHTML = "Chyba systému.";
