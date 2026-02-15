@@ -2,7 +2,7 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <title>Centrální Dispečink v2.0</title>
+    <title>Centrální Dispečink v2.1</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background: #ecf0f1; }
         .box { background: white; padding: 25px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -46,10 +46,14 @@
             <hr>
             <h4>Přidat nový vlak</h4>
             <div style="display:flex; gap:10px;">
-                <input type="text" id="new-id" placeholder="ID (např. R900)">
-                <input type="text" id="new-name" placeholder="Název (např. Rychlík Vysočina)">
+                <input type="text" id="new-id" placeholder="ID (např. Sp1780)">
+                <input type="text" id="new-name" placeholder="Název (např. Vlárský Expres)">
             </div>
-            <textarea id="new-route" rows="3" placeholder="Trasa (napiš: Stanice Čas, Stanice Čas...)&#10;Např: Praha 12:00, Kolín 12:40, Brno 14:50"></textarea>
+            <p style="font-size:0.9em; color:#666; margin-bottom:5px;">
+                Zadej trasu oddělenou čárkami. Poslední slovo je vždy čas.<br>
+                Příklad: <code>Brno hl.n. 12:00, Vlárský Průsmyk 14:30, Trenčianska Teplá 15:00</code>
+            </p>
+            <textarea id="new-route" rows="3" placeholder="Stanice Čas, Stanice Čas..."></textarea>
             <button onclick="pridatVlak()" class="btn-add">Přidat vlak do systému</button>
 
             <div id="db-trains-list" style="margin-top:15px; max-height: 200px; overflow-y: auto; border:1px solid #ddd;"></div>
@@ -58,7 +62,7 @@
         <h3>👥 Správa služeb</h3>
         <div style="display:flex; gap:10px;">
             <input type="text" id="admin-user-name" placeholder="Jméno (např. pepa)">
-            <input type="text" id="admin-station-name" placeholder="Stanice (např. Praha)">
+            <input type="text" id="admin-station-name" placeholder="Stanice (např. Vlárský Průsmyk)">
         </div>
         <button onclick="priraditSluzbu()" style="background:#2ecc71;">Přiřadit službu</button>
         <div id="users-list" style="font-size: 0.9em; color: #666; margin-top: 5px;"></div>
@@ -84,7 +88,7 @@
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { getDatabase, ref, get, set, remove, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-        // --- TVOJE CONFIGURACE (VLOŽENO) ---
+        // --- TVOJE CONFIGURACE (Zkopíruj sem tu svoji z předchozího souboru) ---
         const firebaseConfig = {
             apiKey: "AIzaSyBK6Nov1Csfxr2O7iE2WZoKNchmGVFdbHg",
             authDomain: "somewherevyhledavac.firebaseapp.com",
@@ -116,7 +120,6 @@
             document.getElementById('normal-screen').classList.add('hidden');
 
             if (user) {
-                // Sledujeme změny v DB (tabulka 'spoje')
                 onValue(ref(db, 'spoje'), (snap) => {
                     if(snap.exists()) {
                         const data = snap.val();
@@ -128,7 +131,6 @@
                     checkUserRole(user);
                 });
                 
-                // Načtení seznamu služeb pro Admina
                 onValue(ref(db, 'sluzby_names'), (snap) => {
                     const list = document.getElementById('users-list');
                     list.innerHTML = "";
@@ -156,7 +158,6 @@
             }
         }
 
-        // --- PŘIDÁVÁNÍ VLAKŮ ---
         window.importFromJSON = async () => {
             if(!confirm("Přepsat databázi ze souboru spoje.json?")) return;
             try {
@@ -169,6 +170,7 @@
             } catch(e) { alert("Chyba: " + e); }
         };
 
+        // --- ZMĚNĚNÁ FUNKCE PRO PŘIDÁVÁNÍ VLAKŮ ---
         window.pridatVlak = async () => {
             const id = document.getElementById('new-id').value.trim();
             const nazev = document.getElementById('new-name').value.trim();
@@ -178,9 +180,20 @@
 
             const trasa = [];
             const parts = routeRaw.split(',');
+            
             for(const part of parts) {
-                const [stanice, cas] = part.trim().split(' ');
-                if(stanice && cas) trasa.push({ stanice: stanice, cas: cas });
+                // Rozdělíme podle mezer
+                const segmenty = part.trim().split(' ');
+                
+                // Poslední část je VŽDY čas (např. "12:00")
+                const cas = segmenty.pop(); 
+                
+                // Všechno ostatní předtím spojíme zpátky do názvu stanice
+                const stanice = segmenty.join(' '); 
+
+                if(stanice && cas) {
+                    trasa.push({ stanice: stanice, cas: cas });
+                }
             }
 
             if(trasa.length < 2) { alert("Chybný formát trasy!"); return; }
@@ -208,7 +221,6 @@
             });
         }
 
-        // --- LOGIKA DISPEČINKU ---
         function initSuperAdmin() {
             const stations = new Set();
             allTrainsData.forEach(t => t.trasa.forEach(s => stations.add(s.stanice)));
@@ -251,8 +263,6 @@
                      if(odjel) continue;
                      
                      let delay = (await get(ref(db, `zpozdeni/${station}/${t.id}`))).val() || 0;
-                     
-                     // Zjistit incoming delay
                      let incoming = 0;
                      if(delay == 0) {
                         for(const b of t.trasa) {
