@@ -16,9 +16,13 @@
         .btn-add { background-color: #8e44ad; }
         .btn-import { background-color: #f39c12; color: black; }
         .btn-delete { background-color: #c0392b; width: auto; padding: 5px 10px; font-size: 0.8em; float:right; }
+        .btn-save { background-color: #27ae60; width: auto; }
+        .btn-gone { background-color: #c0392b; width: auto; }
+        .btn-logout { background-color: #95a5a6; margin-top: 20px; }
         
         .super-panel { border-left: 5px solid #f39c12; }
         .train-item { background: #f9f9f9; padding: 10px; border-bottom: 1px solid #ddd; }
+        .vlak-row { border-bottom: 1px solid #eee; padding: 10px 0; display: flex; justify-content: space-between; align-items: center; }
     </style>
 </head>
 <body>
@@ -30,6 +34,7 @@
         <input type="text" id="username" placeholder="Uživatelské jméno (např. pepa)">
         <input type="password" id="password" placeholder="Heslo">
         <button onclick="login()" class="btn-login">Přihlásit se</button>
+        <p style="text-align:center; margin-top:10px;"><a href="index.html">Zpět na web</a></p>
     </div>
 
     <div id="superadmin-screen" class="box super-panel hidden">
@@ -37,10 +42,8 @@
 
         <div style="background: #fff8e1; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
             <h3>🚂 Správa Jízdního řádu (Databáze)</h3>
-            
             <button onclick="importFromJSON()" class="btn-import">⚠️ Nahrát vlaky ze spoje.json do Databáze (Použít 1x)</button>
             <hr>
-
             <h4>Přidat nový vlak</h4>
             <div style="display:flex; gap:10px;">
                 <input type="text" id="new-id" placeholder="ID (např. R900)">
@@ -58,6 +61,7 @@
             <input type="text" id="admin-station-name" placeholder="Stanice (např. Praha)">
         </div>
         <button onclick="priraditSluzbu()" style="background:#2ecc71;">Přiřadit službu</button>
+        <div id="users-list" style="font-size: 0.9em; color: #666; margin-top: 5px;"></div>
 
         <hr>
         <h3>🕹️ Ovládání zpoždění</h3>
@@ -66,24 +70,30 @@
         </select>
         <div id="super-trains-list"></div>
         
-        <button onclick="logout()" style="background:#95a5a6; margin-top:20px;">Odhlásit</button>
+        <button onclick="logout()" class="btn-logout">Odhlásit se</button>
     </div>
 
     <div id="normal-screen" class="box hidden">
         <h2>Stanice: <span id="my-station" style="color:#2980b9">...</span></h2>
         <div id="my-trains-list"></div>
-        <button onclick="logout()" style="background:#95a5a6; margin-top:20px;">Konec směny</button>
+        <button onclick="logout()" class="btn-logout">Konec směny</button>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getDatabase, ref, get, set, remove, onValue, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, get, set, remove, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-        // --- TVOJE CONFIGURACE ---
+        // --- TVOJE CONFIGURACE (VLOŽENO) ---
         const firebaseConfig = {
-            apiKey: "...", 
-            // ... tvůj config ...
+            apiKey: "AIzaSyBK6Nov1Csfxr2O7iE2WZoKNchmGVFdbHg",
+            authDomain: "somewherevyhledavac.firebaseapp.com",
+            databaseURL: "https://somewherevyhledavac-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "somewherevyhledavac",
+            storageBucket: "somewherevyhledavac.firebasestorage.app",
+            messagingSenderId: "115280119429",
+            appId: "1:115280119429:web:20c50edc0b0bd680e9cbec",
+            measurementId: "G-ZW5WT8D9YW"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -91,7 +101,7 @@
         const db = getDatabase(app);
         const DOMAIN = "@hra.cz"; 
         
-        let allTrainsData = []; // Data teď budeme brát z DB, ne z JSONu
+        let allTrainsData = []; 
 
         window.login = () => {
             const user = document.getElementById('username').value + DOMAIN;
@@ -106,20 +116,28 @@
             document.getElementById('normal-screen').classList.add('hidden');
 
             if (user) {
-                // NEJDŮLEŽITĚJŠÍ ZMĚNA: Načítáme vlaky z Firebase ('spoje'), ne ze souboru!
+                // Sledujeme změny v DB (tabulka 'spoje')
                 onValue(ref(db, 'spoje'), (snap) => {
                     if(snap.exists()) {
-                        // Převedeme objekt z DB na pole
                         const data = snap.val();
                         allTrainsData = Object.values(data); 
-                        renderDbTrainsList(data); // Zobrazit seznam pro smazání
+                        renderDbTrainsList(allTrainsData);
                     } else {
                         allTrainsData = [];
                     }
-                    
-                    // Překreslit rozhraní podle toho, kdo je přihlášen
                     checkUserRole(user);
                 });
+                
+                // Načtení seznamu služeb pro Admina
+                onValue(ref(db, 'sluzby_names'), (snap) => {
+                    const list = document.getElementById('users-list');
+                    list.innerHTML = "";
+                    if(snap.exists()) {
+                        const data = snap.val();
+                        Object.keys(data).forEach(k => list.innerHTML += `${k} -> ${data[k]} | `);
+                    }
+                });
+
             } else {
                 document.getElementById('login-screen').classList.remove('hidden');
             }
@@ -138,22 +156,19 @@
             }
         }
 
-        // --- NOVÉ FUNKCE: PŘIDÁVÁNÍ VLAKŮ ---
-
-        // 1. Import ze starého JSONu (jednorázovka)
+        // --- PŘIDÁVÁNÍ VLAKŮ ---
         window.importFromJSON = async () => {
-            if(!confirm("Opravdu chceš přepsat databázi daty ze souboru spoje.json?")) return;
-            const res = await fetch('spoje.json');
-            const data = await res.json();
-            
-            // Uložíme každý vlak do DB pod klíčem 'spoje'
-            for(const vlak of data) {
-                await set(ref(db, 'spoje/' + vlak.id), vlak);
-            }
-            alert("Hotovo! Vlaky jsou v databázi.");
+            if(!confirm("Přepsat databázi ze souboru spoje.json?")) return;
+            try {
+                const res = await fetch('spoje.json');
+                const data = await res.json();
+                for(const vlak of data) {
+                    await set(ref(db, 'spoje/' + vlak.id), vlak);
+                }
+                alert("Hotovo! Vlaky nahrány.");
+            } catch(e) { alert("Chyba: " + e); }
         };
 
-        // 2. Přidání nového vlaku ručně
         window.pridatVlak = async () => {
             const id = document.getElementById('new-id').value.trim();
             const nazev = document.getElementById('new-name').value.trim();
@@ -161,38 +176,30 @@
 
             if(!id || !nazev || !routeRaw) { alert("Vyplň vše!"); return; }
 
-            // Parsování trasy z textu "Praha 12:00, Brno 14:00"
             const trasa = [];
             const parts = routeRaw.split(',');
             for(const part of parts) {
                 const [stanice, cas] = part.trim().split(' ');
-                if(stanice && cas) {
-                    trasa.push({ stanice: stanice, cas: cas });
-                }
+                if(stanice && cas) trasa.push({ stanice: stanice, cas: cas });
             }
 
-            if(trasa.length < 2) { alert("Trasa musí mít alespoň 2 stanice (Stanice Čas)!"); return; }
+            if(trasa.length < 2) { alert("Chybný formát trasy!"); return; }
 
-            const novyVlak = { id, nazev, trasa };
-            await set(ref(db, 'spoje/' + id), novyVlak);
-            
+            await set(ref(db, 'spoje/' + id), { id, nazev, trasa });
             alert("Vlak přidán!");
             document.getElementById('new-id').value = "";
             document.getElementById('new-name').value = "";
             document.getElementById('new-route').value = "";
         };
 
-        // 3. Smazání vlaku (pouze SuperAdmin)
         window.smazatVlakDB = async (vlakId) => {
-            if(confirm("Opravdu smazat vlak " + vlakId + " ze systému?")) {
-                await remove(ref(db, 'spoje/' + vlakId));
-            }
+            if(confirm("Smazat vlak " + vlakId + "?")) await remove(ref(db, 'spoje/' + vlakId));
         };
 
-        function renderDbTrainsList(dataObj) {
+        function renderDbTrainsList(listData) {
             const list = document.getElementById('db-trains-list');
             list.innerHTML = "";
-            Object.values(dataObj).forEach(v => {
+            listData.forEach(v => {
                 list.innerHTML += `
                     <div class="train-item">
                         <b>${v.id}</b> - ${v.nazev}
@@ -201,12 +208,8 @@
             });
         }
 
-        // ... ZBYTEK KÓDU (SuperAdmin init, NormalAdmin init, renderTrains...)
-        // Zde vlož zbytek funkcí (initSuperAdmin, initNormalAdmin, renderTrains, saveD, gone, loadUsersList...)
-        // Jen v nich už nic nenačítáme přes 'fetch', protože allTrainsData se plní nahoře přes onValue.
-        
+        // --- LOGIKA DISPEČINKU ---
         function initSuperAdmin() {
-             // Naplnit select stanicemi
             const stations = new Set();
             allTrainsData.forEach(t => t.trasa.forEach(s => stations.add(s.stanice)));
             const sel = document.getElementById('station-select');
@@ -248,16 +251,29 @@
                      if(odjel) continue;
                      
                      let delay = (await get(ref(db, `zpozdeni/${station}/${t.id}`))).val() || 0;
-                     if(delay===0) { /* ... logika incoming delay ... */ }
+                     
+                     // Zjistit incoming delay
+                     let incoming = 0;
+                     if(delay == 0) {
+                        for(const b of t.trasa) {
+                            if(b.stanice === station) break;
+                            const d = (await get(ref(db, `zpozdeni/${b.stanice}/${t.id}`))).val();
+                            if(d) incoming = d;
+                        }
+                        delay = incoming;
+                     }
 
                      const div = document.createElement('div');
-                     div.className = 'vlak-item';
+                     div.className = 'vlak-row';
                      div.innerHTML = `
-                        <div style="border-bottom:1px solid #eee; padding:5px;">
+                        <div>
                             <strong>${t.nazev}</strong> (${stop.cas})
-                            Zpoždění: <input type="number" id="d-${t.id}" value="${delay}" style="width:50px">
-                            <button onclick="saveD('${station}','${t.id}','d-${t.id}')">Uložit</button>
-                            <button onclick="gone('${station}','${t.id}')">Odjel</button>
+                            ${incoming > 0 ? `<span style='color:orange; font-size:0.8em;'>(veze ${incoming})</span>` : ''}
+                        </div>
+                        <div style="display:flex; gap:5px;">
+                            <input type="number" id="d-${elId}-${t.id}" value="${delay}" style="width:50px">
+                            <button class="btn-save" onclick="saveD('${station}','${t.id}','d-${elId}-${t.id}')">💾</button>
+                            <button class="btn-gone" onclick="gone('${station}','${t.id}')">Odjel</button>
                         </div>
                      `;
                      list.appendChild(div);
@@ -265,7 +281,7 @@
              }
         }
         
-        window.saveD = (s,i,inId) => set(ref(db, `zpozdeni/${s}/${i}`), document.getElementById(inId).value);
+        window.saveD = (s,i,inId) => set(ref(db, `zpozdeni/${s}/${i}`), document.getElementById(inId).value).then(()=>alert("Uloženo"));
         window.gone = (s,i) => set(ref(db, `odjezdy/${s}/${i}`), true);
 
     </script>
